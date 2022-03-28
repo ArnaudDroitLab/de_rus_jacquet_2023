@@ -1,0 +1,38 @@
+import pandas as pd
+
+configfile: 'config/config.yaml'
+
+units = pd.read_csv(config['units'], sep='\t', index_col=0)
+
+report: "report/workflow.rst"
+
+include: "rules/merge.smk"
+include: "rules/trim.smk"
+include: "rules/kallisto.smk"
+include: "rules/rnaseq.smk"
+include: "rules/qc.smk"
+
+
+rule kallisto:
+    input:
+        ["{path}/results/merge/{sample_pair}.fastq".format(
+            path=config['path'], sample_pair = sp) for sp in config['rq']],
+        ["{path}/results/trimming/{sample}.trimmed".format(
+            path=config['path'], sample = s) for s in units.index ],
+        ["{path}/results/kallisto/{sample}/{file}".format(
+            path=config['path'], sample = s, file = f) for s in units.index 
+            for f in ["abundance.tsv", "abundance.h5", "run_info.json"]],
+
+rule rnaseq:
+    input:
+        f"{config['path']}/results/rnaseq/tpm.csv",
+        f"{config['path']}/results/rnaseq/txi.rds"
+
+rule qc:
+    input:
+        ["{path}/results/qc/{dir}/fastqc/{sample_pair}_fastqc.html".format(
+            path=config['path'], dir = d, sample_pair = sp) for d in ["trimming", "merge"] 
+                for sp in config['rq']],
+        ["{path}/results/qc/{dir}/multiqc/multiqc_{dir}.html".format(
+            path=config['path'], dir=d) for d in ["trimming", "merge"]],
+

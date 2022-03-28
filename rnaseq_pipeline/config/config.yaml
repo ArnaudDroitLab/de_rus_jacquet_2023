@@ -1,0 +1,102 @@
+fastp:
+    container: docker://gottysg36/fastp:latest
+    mem: 1
+    threads: 4
+    time: 10
+kallisto:
+    container: docker://gottysg36/kallisto:latest
+    index:
+        mem: 15
+        threads: 1
+        time: 30
+    params: ''
+    quant:
+        mem: 15
+        threads: 4
+        time: 100
+path: /mnt/tn02_bioinfo/JACA/IPS/rnaseq_pipeline
+qc:
+    container: docker://gottysg36/qc:latest
+    mem: 1
+    threads: 4
+    time: 30
+    tmp: tmp_qc
+resources:
+    ref:
+        transcriptome: /is3/projects/PUBLIC/rnaseq_anno/org/Hs/Hs.Ensembl104.fa.gz
+rnaseq:
+    anno: Hs.Ensembl100
+    container: docker://gottysg36/r-rnaseq:latest
+    mem: 15
+    script: scripts/r-rnaseq.R
+    time: 30
+rq:
+    SRR12045496_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045496_R1.fastq
+    SRR12045496_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045496_R2.fastq
+    SRR12045497_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045497_R1.fastq
+    SRR12045497_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045497_R2.fastq
+    SRR12045501_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045501_R1.fastq
+    SRR12045501_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045501_R2.fastq
+    SRR12045502_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045502_R1.fastq
+    SRR12045502_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045502_R2.fastq
+    SRR12045503_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045503_R1.fastq
+    SRR12045503_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045503_R2.fastq
+    SRR12045507_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045507_R1.fastq
+    SRR12045507_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045507_R2.fastq
+    SRR12045508_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045508_R1.fastq
+    SRR12045508_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045508_R2.fastq
+    SRR12045509_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045509_R1.fastq
+    SRR12045509_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR12045509_R2.fastq
+    SRR7406472_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406472_R1.fastq
+    SRR7406472_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406472_R2.fastq
+    SRR7406473_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406473_R1.fastq
+    SRR7406473_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406473_R2.fastq
+    SRR7406476_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406476_R1.fastq
+    SRR7406476_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406476_R2.fastq
+    SRR7406477_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406477_R1.fastq
+    SRR7406477_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406477_R2.fastq
+    SRR7406480_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406480_R1.fastq
+    SRR7406480_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406480_R2.fastq
+    SRR7406481_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406481_R1.fastq
+    SRR7406481_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7406481_R2.fastq
+    SRR7889835_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889835_R1.fastq
+    SRR7889835_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889835_R2.fastq
+    SRR7889836_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889836_R1.fastq
+    SRR7889836_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889836_R2.fastq
+    SRR7889837_R1:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889837_R1.fastq
+    SRR7889837_R2:
+    - /mnt/tn02_bioinfo/JACA/IPS/raw_data/fastq/SRR7889837_R2.fastq
+units: config/units.tsv

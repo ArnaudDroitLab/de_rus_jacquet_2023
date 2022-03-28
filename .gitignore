@@ -1,1 +1,6 @@
 raw_data/*
+rnaseq_pipeline/logs/*
+rnaseq_pipeline/report/*
+rnaseq_pipeline/results/*
+rnaseq_pipeline/.snakemake/*
+rnaseq_pipeline/env-rnaseq/*
