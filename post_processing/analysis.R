@@ -5,39 +5,34 @@ library(rnaseq)
 library(openxlsx)
 library(factoextra)
 library(ggrepel)
-library(ComplexHeatmap)
+library(sva)
 
 # Import
+design <- read_csv("design.csv")
+
 filenames <- rnaseq::get_filenames("../rnaseq_pipeline/results/kallisto/")
-filenames <- filenames[which(!names(filenames) %in% c("SRR7406472", "SRR7406473", "SRR7406474", "SRR7406475"))]
+filenames <- filenames[which(names(filenames) %in% design$sample)]
 
 anno <- "/is3/projects/PUBLIC/rnaseq_anno/org/Hs/Hs.Ensembl104.csv"
 
-metadata <- read_csv("../metadata/SraRunTable_all.csv")
+# txi <- import_kallisto(filenames, anno = anno)
+# saveRDS(txi, "r_objects/txi.rds")
+txi <- readRDS("r_objects/txi.rds")
 
-txi <- import_kallisto(filenames, anno = anno)
-saveRDS(txi, "r_objects/txi.rds")
-# txi <- readRDS("r_objects/txi.rds")
-
-raw_counts <- get_anno_df(txi, "raw_counts")
-tpm <- get_anno_df(txi, "tpm")
-
-write_csv(raw_counts, "livrables/raw_counts.csv")
-write.xlsx(raw_counts, "livrables/raw_counts.xlsx")
-
-write_csv(tpm, "livrables/tpm.csv")
-write.xlsx(tpm, "livrables/tpm.xlsx")
+raw_counts <- get_anno_df(txi, "raw_counts") %>%
+  write.xlsx(raw_counts, "livrables/raw_counts.xlsx")
+tpm <- get_anno_df(txi, "tpm") %>%
+  write.xlsx(tpm, "livrables/tpm.xlsx")
 
 # ------------------------------------ PCA ----------------------------------------------
-pdf("livrables/pca.pdf")
+# Produce PCA
 res_pca <- produce_pca(txi)
-dev.off()
 
 res_pca_df <- res_pca$df %>%
-  left_join(metadata, by = c("sample" = "Run"))
-res_pca_df$disease_state[is.na(res_pca_df$disease_state)] <- res_pca_df$Cell_type[is.na(res_pca_df$disease_state)]
+  left_join(design)
 
-p <- ggplot2::ggplot(res_pca_df, ggplot2::aes_string(x = "Dim1", y = "Dim2", color = "Cell_type", shape = "disease_state")) +
+# Plot PCA colored
+p <- ggplot2::ggplot(res_pca_df, ggplot2::aes_string(x = "Dim1", y = "Dim2", color = "group", shape = "study")) +
      ggplot2::geom_point(size = 3) +
      ggrepel::geom_text_repel(ggplot2::aes(label = sample), color = "black", force = 10) +
      ggplot2::theme_bw() +
@@ -48,46 +43,112 @@ pdf("livrables/pca_colored.pdf")
 print(p)
 dev.off()
 
-# ------------------------------------ HIERARCHICAL CLUSTERING ----------------------------------------------
+# PCA Hierarchical clustering
 res.hcpc <- FactoMineR::HCPC(res_pca$pca, graph = FALSE)
 pdf("livrables/hierarchical_clustering.pdf")
 fviz_dend(res.hcpc, cex = 0.7, palette = "jco", rect = TRUE, rect_fill = TRUE,
            rect_border = "jco", labels_track_height = 0.8)
 dev.off()
 
-# ------------------------------------ DE ----------------------------------------------
-design <- read_csv("design.csv")
+# ------------------------------------ PCA correction batch effect ----------------------------------------------
+txi_combat <- txi
+txi_combat$abundance <- ComBat_seq(txi_combat$abundance, batch=design$study, group=design$group)
 
+res_pca_combat <- produce_pca(txi_combat)
+
+res_pca_combat_df <- res_pca_combat$df %>%
+  left_join(design)
+
+p <- ggplot2::ggplot(res_pca_combat_df, ggplot2::aes_string(x = "Dim1", y = "Dim2", color = "group", shape = "study")) +
+     ggplot2::geom_point(size = 3) +
+     ggrepel::geom_text_repel(ggplot2::aes(label = sample), color = "black", force = 10) +
+     ggplot2::theme_bw() +
+     ggplot2::xlab(paste0("Dim1 (", res_pca_combat$pca$eig[1, 2] %>% round(2), "%)")) +
+     ggplot2::ylab(paste0("Dim2 (", res_pca_combat$pca$eig[2, 2] %>% round(2), "%)"))
+
+pdf("livrables/pca_Combat_seq_colored.pdf")
+print(p)
+dev.off()
+
+res_hcpc_combat <- FactoMineR::HCPC(res_pca_combat$pca, graph = FALSE)
+pdf("livrables/hierarchical_clustering_Combat_seq.pdf")
+fviz_dend(res_hcpc_combat, cex = 0.7, palette = "jco", rect = TRUE, rect_fill = TRUE,
+           rect_border = "jco", labels_track_height = 0.8)
+dev.off()
+
+
+# ------------------------------------ DE ----------------------------------------------
 dds <- deseq2_analysis(txi, design, ~ group)
 saveRDS(dds, "r_objects/dds.rds")
 
-res <- DESeq2::results(dds, contrast = c("group", "astrocytes", "iPSC")) %>%
+generate_DE_results <- function(group1, group2){
+  res <- DESeq2::results(dds, contrast = c("group", group1, group2)) %>%
     as.data.frame %>%
     rownames_to_column("id") %>%
     left_join(txi$anno, by = "id") %>%
     dplyr::select(-id) %>%
     dplyr::select(ensembl_gene:transcript_type, everything()) %>%
     arrange(padj)
-write_csv(res, "livrables/de_astrocytes_vs_iPSC.csv")
-write.xlsx(res, "livrables/de_astrocytes_vs_iPSC.xlsx")
+  write.xlsx(res, paste("livrables/de_", group1, "_vs_", group2, ".xlsx", sep = ""))
 
-# ------------------------------------ VOLCANO PLOTS ----------------------------------------------
-p <- produce_volcano(res, fc_threshold = 1.5)$p +
+  # Volcano plots
+  pdf(paste("livrables/volcano", group1, "vs", group2, "FC_1_5.pdf", sep = "_"))
+  produce_volcano(res, fc_threshold = 1.5)$p +
     geom_text_repel(data = head(res, 10), mapping = aes(x = log2FoldChange, y = -log10(padj), label = symbol), color = "black")
-pdf("livrables/volcano_astrocytes_vs_iPSC_FC_1_5.pdf")
-print(p)
+  dev.off()
+
+  pdf(paste("livrables/volcano", group1, "vs", group2, "FC_3.pdf", sep = "_"))
+  produce_volcano(res, fc_threshold = 3)$p +
+    geom_text_repel(data = head(res, 10), mapping = aes(x = log2FoldChange, y = -log10(padj), label = symbol), color = "black")
+  dev.off()
+
+  up_regulated <- res[res$log2FoldChange <= log2(1/3) & res$padj <= 0.05,] %>%
+    na.omit() %>%
+    write_xlsx(paste("livrables/up_regulated_", group1, "_vs_", group2, ".xlsx", sep = ""))
+
+  down_regulated <- res[res$log2FoldChange >= log2(3) & res$padj <= 0.05,] %>%
+    na.omit() %>%
+    write_xlsx( paste("livrables/down_regulated", group1, "_vs_", group2, ".xlsx", sep = ""))
+  
+  res
+}
+
+res_astro_IPSC <- generate_DE_results("Cortical_astrocytes", "Control_iPSCs")
+res_astro_IPSCD_der <- generate_DE_results("Cortical_astrocytes", "Control_iPSC_derived_astrocytes")
+
+# ------------------------------------ PCA normalisation VSD ----------------------------------------------
+vsd <- vst(dds, blind=FALSE)
+
+# Heatmap sample to sample distance
+library("RColorBrewer")
+library("pheatmap")
+
+sampleDists <- dist(t(assay(vsd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(vsd$condition, vsd$type, sep="-")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+hm <- pheatmap(sampleDistMatrix,
+               clustering_distance_rows=sampleDists,
+               clustering_distance_cols=sampleDists,
+               col=colors)
+
+pdf("livrables/VSD_sample_to_sample_distance.pdf")
+print(hm)
 dev.off()
 
-p <- produce_volcano(res, fc_threshold = 3)$p +
-    geom_text_repel(data = head(res, 10), mapping = aes(x = log2FoldChange, y = -log10(padj), label = symbol), color = "black")
-pdf("livrables/volcano_astrocytes_vs_iPSC_FC_3.pdf")
-print(p)
+# PCA
+pdf("livrables/VSD_PCA.pdf")
+plotPCA(vsd, intgroup=c("study", "group"))
 dev.off()
 
-# up_regulated <- res[res$log2FoldChange <= log2(1/3) & res$padj <= 0.05,] %>%
-#     na.omit()
-# write_csv(up_regulated, "livrables/up_regulated.csv")
+pcaData <- plotPCA(vsd, intgroup=c("study", "group"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
 
-# down_regulated <- res[res$log2FoldChange >= log2(3) & res$padj <= 0.05,] %>%
-#     na.omit()
-# write_csv(down_regulated, "livrables/down_regulated.csv")
+pdf("livrables/VSD_PCA_colored.pdf")
+ggplot(pcaData, aes(PC1, PC2, color=study, shape=group)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  coord_fixed()
+dev.off()
