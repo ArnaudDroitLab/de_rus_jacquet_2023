@@ -6,3 +6,4 @@ rnaseq_pipeline/.snakemake/*
 rnaseq_pipeline/env-rnaseq/*
 post_processing/r_objects/*
 post_processing/livrables/*
+post_processing/databases/*
