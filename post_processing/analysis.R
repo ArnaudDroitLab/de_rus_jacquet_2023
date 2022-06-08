@@ -6,6 +6,7 @@ library(openxlsx)
 library(factoextra)
 library(ggrepel)
 library(sva)
+library("org.Hs.eg.db")
 
 # Import
 design <- read_csv("design.csv")
@@ -113,7 +114,7 @@ generate_DE_results <- function(group1, group2){
   down_regulated <- res[res$log2FoldChange >= log2(3) & res$padj <= 0.05,] %>%
     na.omit() %>%
     write.xlsx( paste("livrables/down_regulated_", group1, "_vs_", group2, ".xlsx", sep = ""))
-  
+ 
   res
 }
 
@@ -164,27 +165,27 @@ names(de_res_files) <- str_remove(de_res_files, "livrables/livrables_20220330/DE
 
 de_res_list <- map(de_res_files, ~ read.xlsx(.x))
 
-regulated_files <- dir(path = "livrables", pattern = "regulated", full.names = TRUE)
-regulated_files <- regulated_files[!str_detect(regulated_files, "TF")]
+regulated_files <- dir(path = "livrables", pattern = "regulated", full.names = TRUE) # CF lines 109 to 115
+# regulated_files <- regulated_files[!str_detect(regulated_files, "TF")]
 names(regulated_files) <- str_remove(regulated_files, "livrables/") %>%
   str_remove(".xlsx")
 
 regulated_list <- map(regulated_files, ~ read.xlsx(.x))
 
 # DB 1 : The human Trancripition Factors db
-TheHumanTrancriptionFactors_db <- read.csv("TheHumanTrancriptionFactors_db.csv") %>%
+TheHumanTrancriptionFactors_db <- read.csv("TF_db/TheHumanTrancriptionFactors_db.csv") %>%
   dplyr::select(Ensembl.ID)
 
 # DB 2 : Human TFDB
-HumanTFDB_db <- read_tsv("HumanTFDB_db.txt") %>%
+HumanTFDB_db <- read_tsv("TF_db/HumanTFDB_db.txt") %>%
   dplyr::select(Ensembl)
 
 # DB 3 : TF2DNA
-pscan_files <- dir(path = "pscan_files", pattern = "pscan", full.names = TRUE, recursive = TRUE)
+pscan_files <- dir(path = "TF_db/TF2DNA_pscan_files", pattern = "pscan", full.names = TRUE, recursive = TRUE)
 
 concat_all_pscan <- function(pscan_file, i, len){
   print(paste(i, "/", len))
-  pscan_db <- str_remove(pscan_file, "pscan_files/Homo-sapiens_") %>%
+  pscan_db <- str_remove(pscan_file, "TF_db/TF2DNA_pscan_files/Homo-sapiens_") %>%
     str_remove("/.*$")
 
   pscan_df <- read_tsv(pscan_file, show_col_types = FALSE) %>%
@@ -195,9 +196,9 @@ concat_all_pscan <- function(pscan_file, i, len){
 
 # TF2DNA_db <- map_dfr(pscan_files, ~ concat_all_pscan(.x, which(pscan_files == .x), length(pscan_files)))
 # TF2DNA_db <- TF2DNA_db %>% write_csv("TF2DNA_db.csv")
-TF2DNA_db <- read_csv("TF2DNA_db.csv")
+TF2DNA_db <- read_csv("TF_db/TF2DNA_db.csv")
 
-# Join all DB 
+# Join all DB
 join_TF_regulated_genes <- function(genes_df, TheHumanTrancriptionFactors_db, HumanTFDB_db, TF2DNA_db, name){
   print(name)
   genes_df$TheHumanTrancriptionFactors_db <- ""
@@ -239,10 +240,95 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
   de_res_TF_target_df <- left_join(de_res_TF_df, targeted_up_TF, by = c("symbol" = "target_name")) %>%
     left_join(targeted_down_TF, by = c("symbol" = "target_name"))
 
-  all_de_res_TF_target_df <- list("de_res_TF_target" = de_res_TF_target_df, 
-                                  "targeted_up_TF" = targeted_up_TF, 
-                                  "targeted_down_TF" = targeted_down_TF) 
+  all_de_res_TF_target_df <- list("de_res_TF_target" = de_res_TF_target_df,
+                                  "targeted_up_TF" = targeted_up_TF,
+                                  "targeted_down_TF" = targeted_down_TF)
   write.xlsx(all_de_res_TF_target_df, paste0("TF_target_", de_name, ".xlsx"))
 }
 
-imap(de_res_TF_list, ~ get_TF_targets(.x, .y, regulated_list, TF2DNA_filtered))
+TF_target_list <- imap(de_res_TF_list, ~ get_TF_targets(.x, .y, regulated_list, TF2DNA_filtered))
+
+
+# ------------------------------------ Analyse ERK pathway ----------------------------------------------
+# Get ERK pathway genes
+ERK_genes <- read_csv("ERK_pathway_db/ERK_pathway_genes_allDB.csv") %>%
+  dplyr::filter(ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$ensembl_gene) %>%
+  dplyr::filter(SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$symbol) %>%
+  dplyr::filter(ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$ensembl_gene) %>%
+  dplyr::filter(SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$symbol)
+
+stopifnot(ERK_genes$ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$ensembl_gene) # Check IDs
+stopifnot(ERK_genes$SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$symbol) # Check IDs
+stopifnot(ERK_genes$ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$ensembl_gene) # Check IDs
+stopifnot(ERK_genes$SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$symbol) # Check IDs
+
+# Get Figure 1 genes
+fig1_genes <- read.xlsx("LRRK2_all datasets compiled_FINAL.xlsx", "List for TF_ERK analysis", colNames = FALSE) %>%
+  unique %>%
+  pull(X1) %>%
+  mapIds(x = org.Hs.eg.db, keytype = "ENSEMBL", column = "SYMBOL") %>%
+  as.data.frame %>%
+  rownames_to_column("ENSEMBL") %>%
+  `colnames<-` (c("ENSEMBL", "SYMBOL")) %>%
+  arrange(SYMBOL)
+
+stopifnot(fig1_genes$ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$ensembl_gene) # Check IDs
+stopifnot(fig1_genes$SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSCs$symbol) # Check IDs
+stopifnot(fig1_genes$ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$ensembl_gene) # Check IDs
+stopifnot(fig1_genes$SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$symbol) # Check IDs
+
+get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtered, ERK_genes, fig1_genes){
+  # up and down regulated genes analysis
+  regulated_names <- names(regulated_list)[str_detect(names(regulated_list), de_name)] # get design name to extract regulated genes
+  up <- regulated_list[[regulated_names[str_detect(regulated_names, "up")]]] # get up-regulated genes
+  down <- regulated_list[[regulated_names[str_detect(regulated_names, "down")]]] # get down-regulated genes
+
+  up_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% up$symbol) %>% # extract up-regulated TF
+    dplyr::select(tf_name, target_name) %>%
+    unique()
+  targeted_up_TF <- group_by(up_TF_targets, target_name) %>% # extraction of all up-regulated TF targeting a gene
+    summarize(targeted_by_up_regulated_TF  = paste(tf_name, collapse = ","))
+    
+  down_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% down$symbol) %>% # extract down-regulated TF
+    dplyr::select(tf_name, target_name) %>%
+    unique()
+  targeted_down_TF <- group_by(down_TF_targets, target_name) %>% # extraction of all down-regulated TF targeting a gene
+    summarize(targeted_by_down_regulated_TF = paste(tf_name, collapse = ","))
+
+  # ERK pathway genes
+  de_res_TF_df$is_ERK <- "" # Add column to identify genes regulated in ERK pathway 
+  de_res_TF_df$is_ERK[de_res_TF_df$ensembl_gene %in% ERK_genes$ENSEMBL] <- "yes"
+
+  ERK_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% ERK_genes$SYMBOL) %>%
+    dplyr::select(tf_name, target_name) %>%
+    unique()
+  targeted_ERK_TF <- group_by(ERK_TF_targets, target_name) %>%
+    summarize(targeted_by_ERK_TF  = paste(tf_name, collapse = ","))
+
+  de_res_TF_df$is_fig1 <- "" # Add column to identify regulated genes from Fig1 
+  de_res_TF_df$is_fig1[de_res_TF_df$ensembl_gene %in% fig1_genes$ENSEMBL] <- "yes"
+
+  fig1_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% fig1_genes$SYMBOL) %>%
+    dplyr::select(tf_name, target_name) %>%
+    unique()
+  targeted_fig1_TF <- group_by(fig1_TF_targets, target_name) %>%
+    summarize(targeted_by_fig1_TF  = paste(tf_name, collapse = ","))
+  
+  # Add new columns
+  de_res_TF_target_df <- left_join(de_res_TF_df, targeted_up_TF, by = c("symbol" = "target_name")) %>% # add up regulated column
+    left_join(targeted_down_TF, by = c("symbol" = "target_name")) %>% # add down-regulated column
+    left_join(targeted_ERK_TF, by = c("symbol" = "target_name")) %>% # add ERK column
+    left_join(targeted_fig1_TF, by = c("symbol" = "target_name")) # add fig1 column
+
+  # Write xlsx output
+  all_de_res_TF_target_df <- list("de_res_TF_target" = de_res_TF_target_df,
+                                  "up_TF_targets" = up_TF_targets, # add sheet with genes targeted by up-regulated TF
+                                  "down_TF_targets" = down_TF_targets, # add sheet with genes targeted by up-regulated TF
+                                  "ERK_TF_targets" = ERK_TF_targets, # add sheet with genes targeted by up-regulated TF
+                                  "fig1_TF_targets" = fig1_TF_targets) # add sheet with genes targeted by up-regulated TF
+  write.xlsx(all_de_res_TF_target_df, paste0("TF_target_ERK_", de_name, ".xlsx"))
+
+  de_res_TF_target_df
+}
+
+TF_target_list <- imap(de_res_TF_list, ~ get_TF_targets(.x, .y, regulated_list, TF2DNA_filtered, ERK_genes, fig1_genes))
