@@ -7,6 +7,8 @@ library(factoextra)
 library(ggrepel)
 library(sva)
 library("org.Hs.eg.db")
+library(gridExtra)
+library(ComplexHeatmap)
 
 # Import
 design <- read_csv("design.csv")
@@ -114,7 +116,7 @@ generate_DE_results <- function(group1, group2){
   down_regulated <- res[res$log2FoldChange >= log2(3) & res$padj <= 0.05,] %>%
     na.omit() %>%
     write.xlsx( paste("livrables/down_regulated_", group1, "_vs_", group2, ".xlsx", sep = ""))
- 
+
   res
 }
 
@@ -263,7 +265,7 @@ stopifnot(ERK_genes$ENSEMBL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_i
 stopifnot(ERK_genes$SYMBOL %in% de_res_TF_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$symbol) # Check IDs
 
 # Get Figure 1 genes
-fig1_genes <- read.xlsx("LRRK2_all datasets compiled_FINAL.xlsx", "List for TF_ERK analysis", colNames = FALSE) %>%
+fig1_genes <- read.xlsx("ERK_pathway_db/LRRK2_all datasets compiled_FINAL.xlsx", "List for TF_ERK analysis", colNames = FALSE) %>%
   unique %>%
   pull(X1) %>%
   mapIds(x = org.Hs.eg.db, keytype = "ENSEMBL", column = "SYMBOL") %>%
@@ -288,7 +290,7 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
     unique()
   targeted_up_TF <- group_by(up_TF_targets, target_name) %>% # extraction of all up-regulated TF targeting a gene
     summarize(targeted_by_up_regulated_TF  = paste(tf_name, collapse = ","))
-    
+
   down_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% down$symbol) %>% # extract down-regulated TF
     dplyr::select(tf_name, target_name) %>%
     unique()
@@ -296,7 +298,7 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
     summarize(targeted_by_down_regulated_TF = paste(tf_name, collapse = ","))
 
   # ERK pathway genes
-  de_res_TF_df$is_ERK <- "" # Add column to identify genes regulated in ERK pathway 
+  de_res_TF_df$is_ERK <- "" # Add column to identify genes regulated in ERK pathway
   de_res_TF_df$is_ERK[de_res_TF_df$ensembl_gene %in% ERK_genes$ENSEMBL] <- "yes"
 
   ERK_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% ERK_genes$SYMBOL) %>%
@@ -305,7 +307,7 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
   targeted_ERK_TF <- group_by(ERK_TF_targets, target_name) %>%
     summarize(targeted_by_ERK_TF  = paste(tf_name, collapse = ","))
 
-  de_res_TF_df$is_fig1 <- "" # Add column to identify regulated genes from Fig1 
+  de_res_TF_df$is_fig1 <- "" # Add column to identify regulated genes from Fig1
   de_res_TF_df$is_fig1[de_res_TF_df$ensembl_gene %in% fig1_genes$ENSEMBL] <- "yes"
 
   fig1_TF_targets <- dplyr::filter(TF2DNA_filtered, tf_name %in% fig1_genes$SYMBOL) %>%
@@ -313,7 +315,7 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
     unique()
   targeted_fig1_TF <- group_by(fig1_TF_targets, target_name) %>%
     summarize(targeted_by_fig1_TF  = paste(tf_name, collapse = ","))
-  
+
   # Add new columns
   de_res_TF_target_df <- left_join(de_res_TF_df, targeted_up_TF, by = c("symbol" = "target_name")) %>% # add up regulated column
     left_join(targeted_down_TF, by = c("symbol" = "target_name")) %>% # add down-regulated column
@@ -332,3 +334,175 @@ get_TF_targets <- function(de_res_TF_df, de_name, regulated_list, TF2DNA_filtere
 }
 
 TF_target_list <- imap(de_res_TF_list, ~ get_TF_targets(.x, .y, regulated_list, TF2DNA_filtered, ERK_genes, fig1_genes))
+
+# ------------------------------------ Visualisation des résults ----------------------------------------------
+## Histogrammes
+# Histogramme du nombres de gènes de la fig1 ciblés par les FT ERK comparés au nombres de gènes hors fig1 ciblés par les FT ERK 
+count_fig1_ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
+  dplyr::filter(is_fig1 == "yes") %>% # Extraction des gènes cibles, de la figure 1 
+  pull(targeted_by_ERK_TF) %>%
+  str_count(",") # Compte le nombre de FT ERK ciblant chaque gène
+count_fig1_ERK_TF <- count_fig1_ERK_TF + 1
+count_fig1_ERK_TF[is.na(count_fig1_ERK_TF)] <- 0
+
+count_not_fig1_ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
+  dplyr::filter(is_fig1 != "yes") %>%
+  pull(targeted_by_ERK_TF) %>%
+  str_count(",") # Compte le nombre de FT ERK ciblant chaque gène
+count_not_fig1_ERK_TF <- count_not_fig1_ERK_TF + 1
+count_not_fig1_ERK_TF[is.na(count_not_fig1_ERK_TF)] <- 0
+
+p1 <- ggplot() +
+  aes(count_fig1_ERK_TF) +
+  geom_histogram(binwidth=1, colour="black", fill="white") +
+  xlim(-1, 30) +
+  xlab("Number of genes from fig1 targeted by ERK TFs")
+p2 <- ggplot() +
+  aes(count_not_fig1_ERK_TF) +
+  geom_histogram(binwidth=1, colour="black", fill="white") +
+  xlim(-1, 30) + 
+  xlab("Number of genes not from fig1 targeted by ERK TFs")
+
+pdf("count_ERK_TF_targets.pdf")
+p <- grid.arrange(p1, p2, nrow = 2)
+p
+dev.off()
+
+## Heatmaps
+# Heatmap rerpésentant la proportion des gènes de la figure 1 qui sont ciblés par les FT ERK pour chaque voie de signalisation
+# En colonne : les 4 voies de signalisation ; En ligne : les FT ERK
+
+# Extraction des FT ERK
+TF_ERK_genes <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
+  dplyr::filter(is_ERK == "yes", TF2DNA_db == "yes") %>%
+  pull(symbol)
+names(TF_ERK_genes) <- TF_ERK_genes 
+
+# Extraction des listes de gènes des 4 voies de signalisation (SYMBOL + ENSEMBL)
+xlsx_pathways_list <- list("angiogenesis_upreg" = "Angiogenesis (upreg)",
+                           "Inflammation_upreg" = "Inflammation (upreg)",
+                           "Angiogenesis_downreg" = "Angiogenesis (downreg)",
+                           "Cell_adhesion_downreg" = "Cell adhesion (downreg)")
+
+get_gene_list_xlsx <- function(sheet_name){
+  read.xlsx("ERK_pathway_db/LRRK2_all datasets compiled_FINAL.xlsx", sheet_name, colNames = FALSE) %>%
+  unique %>%
+  pull(X1) %>%
+  mapIds(x = org.Hs.eg.db, keytype = "ENSEMBL", column = "SYMBOL") %>%
+  as.data.frame %>%
+  rownames_to_column("ENSEMBL") %>%
+  `colnames<-` (c("ENSEMBL", "SYMBOL")) %>%
+  arrange(SYMBOL)
+}
+
+xlsx_pathways_genes <- map(xlsx_pathways_list, ~ get_gene_list_xlsx(.x))
+
+# Extraction des listes de FT ERK pour tous les gènes des 4 voies de signalisation
+get_pathway_ERK_TF <- function(pathway_df){
+  TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
+    dplyr::filter(symbol %in% pathway_df$SYMBOL) %>%
+    pull(targeted_by_ERK_TF)
+}
+pathways_ERK_TF_list <- map(xlsx_pathways_genes, ~ get_pathway_ERK_TF(.x))
+
+# Calcul de la proportion de gènes ciblés par les FT ERK dans chaque voie de signalisation
+get_TF_proportion <- function(pathways_ERK_TF, symbol){
+  symbol_is_TF <- str_detect(pathways_ERK_TF, symbol)
+  symbol_is_TF[is.na(symbol_is_TF)] <- FALSE
+  nb_TF <- as.vector(table(symbol_is_TF)["TRUE"])
+  if(is.na(nb_TF)){
+    prop_TF = 0
+  }else{
+  prop_TF <- nb_TF / length(pathways_ERK_TF) * 100
+  }
+  prop_TF
+}
+
+get_TF_proportion_df <- function(TF_symbol){
+  cbind("symbol" = TF_symbol, map_dfr(pathways_ERK_TF_list, ~ get_TF_proportion(.x, TF_symbol)))
+}
+
+TF_proportion_df <- map_dfr(TF_ERK_genes, ~ get_TF_proportion_df(.x)) %>%
+  column_to_rownames("symbol") %>%
+  as.matrix
+
+pdf("heatmap_proportion_TF_ERK_in_pathways.pdf")
+hm <- Heatmap(TF_proportion_df,
+              column_names_rot = 45,
+              name = "% Fig1 genes\ntargeted",
+              column_title = "Proportion of Figure 1 genes targeted\nby ERK FTs for each signaling pathway")
+hm <- draw(hm)
+dev.off()
+
+## Graphe d'interaction des FT ERK sur les gènes de la figure 1
+# Générer l'input pour la table pour Cytoscape, cad une ligne par interaction
+ERK_TF_targets <- read.xlsx("livrables/livrables_20220602/TF_target_ERK_Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes.xlsx",
+                            sheet = "ERK_TF_targets") %>%
+  dplyr::filter(target_name %in% fig1_genes$SYMBOL) %>%
+  write_csv("cytoscape/ERK_fig1_edges_table.csv")
+
+# Ajouter un fichier de metadonnées, décrivant si les gènes (noeuds) sont issus de la fig1, ou de ERK, ainsi que leur voie de signalisation
+nodes_table <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes$symbol %>%
+  tibble(symbol = .) %>%
+  mutate(angiogenesis_upreg = ifelse(symbol %in% xlsx_pathways_genes$angiogenesis_upreg$SYMBOL, "angiogenesis_upreg", NA)) %>%
+  mutate(Inflammation_upreg = ifelse(symbol %in% xlsx_pathways_genes$Inflammation_upreg$SYMBOL, "inflammation_upreg", NA)) %>%
+  mutate(Angiogenesis_downreg = ifelse(symbol %in% xlsx_pathways_genes$Angiogenesis_downreg$SYMBOL, "angiogenesis_downreg", NA)) %>%
+  mutate(Cell_adhesion_downreg = ifelse(symbol %in% xlsx_pathways_genes$Cell_adhesion_downreg$SYMBOL, "cell_adhesion_downreg", NA)) %>%
+  pivot_longer(-symbol) %>%
+  na.omit %>%
+  group_by(symbol) %>%
+  summarize(pathways = paste(value, collapse = ",")) %>%
+  full_join(TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes) %>%
+  dplyr::select(symbol, is_ERK, is_fig1, pathways) %>%
+  dplyr::filter(is_ERK == "yes" | is_fig1 == "yes") %>%
+  mutate(is_ERK_fig1 = ifelse(is_ERK == "yes" & is_fig1 != "yes", "ERK",
+                       ifelse(is_ERK != "yes" & is_fig1 == "yes", "fig1", 
+                       ifelse(is_ERK == "yes" & is_fig1 == "yes", "ERK_fig1", "none")))) %>%
+  write_csv("cytoscape/fig1_gene_pathways.csv")
+
+## Heatmap de la proportion des cibles FT ERK #1 qui sont également cibles du FT ERK #2
+# Extraction des FT ERK qui ciblent les gènes de la fig1 (pas les autres FT)
+ERK_TF_list <- unique(ERK_TF_targets$tf_name)
+
+# Création de matrices contenant le nombre de gènes ciblés communs pour chaque FT ERK
+compare_ERK_TF_targets_matrix <- matrix(NA, nrow=length(ERK_TF_list), ncol=length(ERK_TF_list), byrow=TRUE)
+rownames(compare_ERK_TF_targets_matrix) <- ERK_TF_list
+colnames(compare_ERK_TF_targets_matrix) <- ERK_TF_list
+
+compare_ERK_TF_targets_matrix_percent <- compare_ERK_TF_targets_matrix
+
+for (i in 1:length(ERK_TF_list)){
+  tmp <- i + 1
+  compare_ERK_TF_targets_matrix_percent[i,i] <- 100
+  for (j in tmp:length(ERK_TF_list)){
+    gene1 <- ERK_TF_list[i]
+    gene2 <- ERK_TF_list[j]
+    if(j != 30 & gene1 != gene2){
+      list_target1 <- ERK_TF_targets$target_name[ERK_TF_targets$tf_name == gene1]
+      list_target2 <- ERK_TF_targets$target_name[ERK_TF_targets$tf_name == gene2]
+      compare_targets <- as.vector(table(list_target1 %in% list_target2)["TRUE"])
+      compare_targets_percent <- compare_targets * 100 / nrow(fig1_genes)
+      if(is.na(compare_targets)){
+        compare_targets <- 0
+        compare_targets_percent <- 0
+      }
+      compare_ERK_TF_targets_matrix[i,j] <- compare_targets
+      compare_ERK_TF_targets_matrix[j,i] <- compare_targets
+      compare_ERK_TF_targets_matrix_percent[i,j] <- compare_targets_percent
+      compare_ERK_TF_targets_matrix_percent[j,i] <- compare_targets_percent
+    }
+  }
+}
+
+library(circlize)
+col_fun = colorRamp2(c(0, 100), c("white", "darkblue"))
+
+hm <- Heatmap(compare_ERK_TF_targets_matrix, column_names_rot = 45, col = c("white", "darkblue"))
+pdf("hm_compare_ERK_TF_targets.pdf")
+hm <- draw(hm)
+dev.off()
+
+hm <- Heatmap(compare_ERK_TF_targets_matrix_percent, column_names_rot = 45, col =  c("white", "darkblue"))
+pdf("hm_compare_ERK_TF_targets_percent.pdf")
+hm <- draw(hm)
+dev.off()
