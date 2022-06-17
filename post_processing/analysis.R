@@ -338,12 +338,17 @@ TF_target_list <- imap(de_res_TF_list, ~ get_TF_targets(.x, .y, regulated_list, 
 # ------------------------------------ Visualisation des résults ----------------------------------------------
 ## Histogrammes
 # Histogramme du nombres de gènes de la fig1 ciblés par les FT ERK comparés au nombres de gènes hors fig1 ciblés par les FT ERK 
+ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
+  dplyr::filter(is_ERK == "yes" & TF2DNA_db == "yes") %>%
+  dplyr::select(symbol)
+
 count_fig1_ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
   dplyr::filter(is_fig1 == "yes") %>% # Extraction des gènes cibles, de la figure 1 
   pull(targeted_by_ERK_TF) %>%
   str_count(",") # Compte le nombre de FT ERK ciblant chaque gène
 count_fig1_ERK_TF <- count_fig1_ERK_TF + 1
 count_fig1_ERK_TF[is.na(count_fig1_ERK_TF)] <- 0
+count_fig1_ERK_TF <- data.frame(counts = count_fig1_ERK_TF)
 
 count_not_fig1_ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_derived_astrocytes %>%
   dplyr::filter(is_fig1 != "yes") %>%
@@ -351,17 +356,21 @@ count_not_fig1_ERK_TF <- TF_target_list$Cortical_astrocytes_vs_Control_iPSC_deri
   str_count(",") # Compte le nombre de FT ERK ciblant chaque gène
 count_not_fig1_ERK_TF <- count_not_fig1_ERK_TF + 1
 count_not_fig1_ERK_TF[is.na(count_not_fig1_ERK_TF)] <- 0
+count_not_fig1_ERK_TF <- data.frame(counts = count_not_fig1_ERK_TF)
 
-p1 <- ggplot() +
-  aes(count_fig1_ERK_TF) +
-  geom_histogram(binwidth=1, colour="black", fill="white") +
-  xlim(-1, 30) +
-  xlab("Number of genes from fig1 targeted by ERK TFs")
-p2 <- ggplot() +
-  aes(count_not_fig1_ERK_TF) +
-  geom_histogram(binwidth=1, colour="black", fill="white") +
-  xlim(-1, 30) + 
-  xlab("Number of genes not from fig1 targeted by ERK TFs")
+p1 <- ggplot(count_fig1_ERK_TF, aes(x = counts)) +
+      geom_bar(aes(y = (..count..)/sum(..count..))) +
+      scale_y_continuous(labels=percent) +
+      xlim(-1, 28) +
+      xlab("Number of ERK TFs targeting a gene from figure 1") +
+      ylab("% of genes from figure 1")
+
+p2 <- ggplot(count_not_fig1_ERK_TF, aes(x = counts)) +
+      geom_bar(aes(y = (..count..)/sum(..count..))) +
+      scale_y_continuous(labels=percent) +
+      xlim(-1, 28) +
+      xlab("Number of ERK TFs targeting a gene not from figure 1") +
+      ylab("% of genes not from figure 1")
 
 pdf("count_ERK_TF_targets.pdf")
 p <- grid.arrange(p1, p2, nrow = 2)
@@ -424,7 +433,12 @@ get_TF_proportion_df <- function(TF_symbol){
 
 TF_proportion_df <- map_dfr(TF_ERK_genes, ~ get_TF_proportion_df(.x)) %>%
   column_to_rownames("symbol") %>%
-  as.matrix
+  as.matrix 
+
+TF_proportion_df %>%
+  as.data.frame %>%
+  rownames_to_column %>%
+  write.xlsx("heatmap_proportion_TF_ERK_in_pathways_matrix.xlsx")
 
 pdf("heatmap_proportion_TF_ERK_in_pathways.pdf")
 hm <- Heatmap(TF_proportion_df,
